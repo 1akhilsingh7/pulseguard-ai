@@ -1,11 +1,11 @@
 """
 =============================================================================
-WEARABLE-SIGNAL STRESS-RISK CLASSIFICATION (WESAD REAL DATASET)
+PULSEGUARD AI — WEARABLE-SIGNAL STRESS CLASSIFICATION
 Module: preprocessing.py
-Description: Data loading, cleaning, feature selection, and subject-independent
-             train/test splitting based on genuine WESAD physiological recordings.
-Dataset Source: University of Siegen & UCI Machine Learning Repository
-Target Audience: 2nd-year B.Tech CSE presentation & demonstration.
+Description: Data loading, cleaning, feature selection, subject-specific
+             baseline normalization, and train/test splitting based on
+             genuine WESAD physiological recordings.
+Dataset: WESAD Benchmark (University of Siegen / ACM ICMI 2018)
 =============================================================================
 """
 
@@ -21,6 +21,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_FILENAME = os.path.join(BASE_DIR, "wesad_processed_dataset.csv")
 RAW_SAMPLES_FILENAME = os.path.join(BASE_DIR, "wesad_raw_samples.pkl")
 SCALER_FILENAME = os.path.join(BASE_DIR, "wesad_scaler.pkl")
+BASELINE_STATS_FILENAME = os.path.join(BASE_DIR, "wesad_baseline_stats.pkl")
 
 # List of 28 authentic physiological features extracted from WESAD chest sensors
 FEATURE_COLUMNS = [
@@ -48,21 +49,18 @@ LABEL_NAMES = {
     2: "Amusement"
 }
 
-# Scientific badge colors
+# User-Facing Healthcare Product Colors:
+# Green = Baseline, Red = Stress, Blue = Amusement
 LABEL_COLORS = {
-    0: "#10b981",  # Emerald Green for Baseline Homeostasis
-    1: "#f43f5e",  # Coral Red for Acute Sympathetic Stress
-    2: "#f59e0b"   # Amber Gold for Amusement / Emotional Arousal
+    0: "#10b981",  # Vibrant Green for Baseline
+    1: "#f43f5e",  # Coral Red for Stress
+    2: "#3b82f6"   # Electric Blue for Amusement
 }
 
 
 def load_wesad_dataset(csv_path=DATASET_FILENAME):
-    """
-    Loads the processed real WESAD feature dataset.
-    If missing, runs the processor to extract windows directly from the official Siegen archive.
-    """
+    """Loads the processed real WESAD feature dataset."""
     if not os.path.exists(csv_path):
-        # Fallback check in parent directory
         parent_path = os.path.join(os.path.dirname(BASE_DIR), "wesad_processed_dataset.csv")
         if os.path.exists(parent_path):
             csv_path = parent_path
@@ -73,46 +71,105 @@ def load_wesad_dataset(csv_path=DATASET_FILENAME):
             )
             
     df = pd.read_csv(csv_path)
-    initial_rows = len(df)
     
-    # 1. Duplicate check
+    # Clean duplicates
     duplicates = df.duplicated().sum()
     if duplicates > 0:
         df = df.drop_duplicates().reset_index(drop=True)
-        print(f"[PREPROCESSING] Dropped {duplicates} duplicate rows.")
         
-    # 2. Missing value verification
+    # Verify missing values
     missing = df[FEATURE_COLUMNS].isnull().sum().sum()
     if missing > 0:
         for col in FEATURE_COLUMNS:
             if df[col].isnull().sum() > 0:
-                median_val = df[col].median()
-                df[col] = df[col].fillna(median_val)
-        print(f"[PREPROCESSING] Imputed {missing} missing values with column median.")
-        
+                df[col] = df[col].fillna(df[col].median())
+                
     df[TARGET_COLUMN] = df[TARGET_COLUMN].astype(int)
-    print(f"[PREPROCESSING] Loaded {len(df)} genuine WESAD records (from {initial_rows} raw).")
     return df
+
+
+def compute_and_save_baseline_stats(df, filepath=BASELINE_STATS_FILENAME):
+    """
+    Computes and saves subject-specific resting baseline mean and std for each feature.
+    Also computes population baseline statistics as a robust fallback.
+    """
+    base_df = df[df[TARGET_COLUMN] == 0]
+    stats = {
+        "subjects": {},
+        "population": {
+            "mean": base_df[FEATURE_COLUMNS].mean().to_dict(),
+            "std": base_df[FEATURE_COLUMNS].std().replace(0, 1.0).fillna(1.0).to_dict()
+        }
+    }
+    for subj in df[SUBJECT_COLUMN].unique():
+        s_base = df[(df[SUBJECT_COLUMN] == subj) & (df[TARGET_COLUMN] == 0)][FEATURE_COLUMNS]
+        if len(s_base) > 0:
+            stats["subjects"][subj] = {
+                "mean": s_base.mean().to_dict(),
+                "std": s_base.std().replace(0, 1.0).fillna(1.0).to_dict()
+            }
+            
+    joblib.dump(stats, filepath)
+    return stats
+
+
+def load_baseline_stats(filepath=BASELINE_STATS_FILENAME, df_fallback=None):
+    """Loads baseline normalization statistics."""
+    if not os.path.exists(filepath):
+        parent_path = os.path.join(os.path.dirname(BASE_DIR), "wesad_baseline_stats.pkl")
+        if os.path.exists(parent_path):
+            filepath = parent_path
+        else:
+            if df_fallback is None:
+                df_fallback = load_wesad_dataset()
+            return compute_and_save_baseline_stats(df_fallback, filepath)
+    return joblib.load(filepath)
+
+
+def normalize_sample(features_input, baseline_stats, subject_id=None):
+    """
+    Normalizes raw physiological features using the subject's resting baseline
+    (or population baseline if subject is unknown or new).
+    z = (x - mean_baseline) / std_baseline
+    """
+    if isinstance(features_input, pd.Series):
+        feat_dict = features_input.to_dict()
+    elif isinstance(features_input, dict):
+        feat_dict = features_input
+    elif isinstance(features_input, pd.DataFrame):
+        feat_dict = features_input.iloc[0].to_dict()
+    else:
+        raise ValueError("Unsupported input format for features_input.")
+        
+    # Select baseline parameters
+    if subject_id and subject_id in baseline_stats.get("subjects", {}):
+        ref_mean = baseline_stats["subjects"][subject_id]["mean"]
+        ref_std = baseline_stats["subjects"][subject_id]["std"]
+    else:
+        ref_mean = baseline_stats["population"]["mean"]
+        ref_std = baseline_stats["population"]["std"]
+        
+    norm_row = {}
+    for col in FEATURE_COLUMNS:
+        val = float(feat_dict.get(col, 0.0))
+        m = float(ref_mean.get(col, 0.0))
+        s = float(ref_std.get(col, 1.0))
+        if s == 0:
+            s = 1.0
+        norm_row[col] = (val - m) / s
+        
+    return pd.DataFrame([norm_row], columns=FEATURE_COLUMNS)
 
 
 def prepare_subject_independent_split(df, test_subject="S4", apply_baseline_norm=True):
     """
     Prepares a strict SUBJECT-INDEPENDENT Train/Test split:
-    - Training Set: All participants except `test_subject` (e.g., S2 and S3).
-    - Test Set: Strictly `test_subject` (e.g., S4).
-    
-    CRITICAL BIOMEDICAL RULE:
-    Zero participant leakage! Overlapping windows from the same individual
-    are NEVER mixed between train and test sets.
-    
-    Optionally applies Subject-Specific Baseline Normalization (Schmidt et al., ICMI 2018):
-    z = (x - mean_baseline) / std_baseline
-    This accounts for individual basal skin conductance and temperature differences.
+    - Training Set: All participants except `test_subject` (S2 and S3).
+    - Test Set: Strictly `test_subject` (S4).
     """
     df_clean = df.copy()
     
     if apply_baseline_norm:
-        # Standardize features relative to each participant's own resting baseline
         for subj in df_clean[SUBJECT_COLUMN].unique():
             subj_mask = df_clean[SUBJECT_COLUMN] == subj
             base_mask = subj_mask & (df_clean[TARGET_COLUMN] == 0)
@@ -138,7 +195,6 @@ def prepare_subject_independent_split(df, test_subject="S4", apply_baseline_norm
     X_test = test_df[FEATURE_COLUMNS].copy()
     y_test = test_df[TARGET_COLUMN].copy()
     
-    # Fit StandardScaler strictly on training subjects
     scaler = StandardScaler()
     X_train_scaled = pd.DataFrame(
         scaler.fit_transform(X_train),
@@ -155,7 +211,6 @@ def prepare_subject_independent_split(df, test_subject="S4", apply_baseline_norm
 def save_scaler(scaler, filepath=SCALER_FILENAME):
     """Saves fitted StandardScaler to disk using Joblib."""
     joblib.dump(scaler, filepath)
-    print(f"[SAVED] Fitted WESAD scaler -> '{filepath}'.")
 
 
 def load_scaler(filepath=SCALER_FILENAME):
@@ -167,25 +222,3 @@ def load_scaler(filepath=SCALER_FILENAME):
         else:
             raise FileNotFoundError(f"Scaler file not found at '{filepath}'.")
     return joblib.load(filepath)
-
-
-if __name__ == "__main__":
-    print("\n=======================================================")
-    print("   GENUINE WESAD DATA PREPROCESSING & VERIFICATION     ")
-    print("=======================================================\n")
-    
-    dataset = load_wesad_dataset()
-    print("\n--- Participants Breakdown ---")
-    print(dataset[SUBJECT_COLUMN].value_counts())
-    
-    print("\n--- Target Class Distribution ---")
-    for cls_id in [0, 1, 2]:
-        cnt = (dataset[TARGET_COLUMN] == cls_id).sum()
-        print(f"  Class {cls_id} ({LABEL_NAMES[cls_id]}): {cnt} windows ({cnt / len(dataset) * 100:.1f}%)")
-        
-    X_tr, X_te, y_tr, y_te, sc, tr_df, te_df = prepare_subject_independent_split(dataset, test_subject="S4")
-    print("\n--- Subject-Independent Train/Test Split ---")
-    print(f"  Training Windows (S2, S3): {len(X_tr)}")
-    print(f"  Testing Windows (S4):      {len(X_te)}")
-    print(f"  Feature Count:             {X_tr.shape[1]}")
-    save_scaler(sc)

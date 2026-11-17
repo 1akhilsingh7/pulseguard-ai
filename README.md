@@ -1,87 +1,60 @@
-# 🩺 PulseGuard AI — Wearable-Signal Stress-Risk Classification
-> **AI Healthcare Biosensing Dashboard powered by Authentic WESAD Dataset Recordings**  
-> *Ready for Streamlit Community Cloud Web Deployment & 2nd-Year B.Tech CSE College Presentation*
+# 🫀 PULSEGUARD AI
+> **"Understand Your Body. Monitor Your Stress."**  
+> *Intelligent Wearable Biosignal Analytics Platform powered by Genuine WESAD Dataset Recordings*
 
-[![Dataset](https://img.shields.io/badge/Dataset-WESAD%20(ACM%20ICMI%202018)-06b6d4)](https://archive.ics.uci.edu/dataset/465/wesad+wearable+stress+and+affect+detection)
-[![Model](https://img.shields.io/badge/Model-Random%20Forest%20(100%20Trees)-10b981)](https://scikit-learn.org/)
-[![Validation](https://img.shields.io/badge/Validation-Subject--Independent%20LOSO-38bdf8)](https://scikit-learn.org/)
-[![Target](https://img.shields.io/badge/Priority%20Metric-Stress%20Recall%20(73.1%25)-f43f5e)](https://scikit-learn.org/)
-
----
-
-## 📌 1. Project Overview & Problem Statement
-Acute and chronic psychological stress are major triggers for cardiovascular disease, autonomic dysfunction, hypertension, and clinical burnout. Traditional clinical stress assessments rely on subjective retrospective surveys, which suffer from recall bias and cannot provide real-time warnings.
-
-**PulseGuard AI** implements an end-to-end supervised machine learning application that detects acute sympathetic stress episodes from continuous wearable biosignals. 
-
-### Key Project Highlights:
-- **100% Real Biosignal Data:** Trained and evaluated strictly on the benchmark **WESAD** (Wearable Stress and Affect Detection) dataset recorded at the University of Siegen.
-- **Subject-Independent Validation:** Zero participant window leakage! Evaluated strictly on held-out subject **S4** (408 windows) after training on subjects **S2 and S3** (806 windows).
-- **High Sensitivity Priority (Stress Recall):** Implements `class_weight='balanced'` in Random Forest to prioritize **Stress Recall (73.1%)** and **Stress Precision (87.9%)**, avoiding dangerous false negatives.
-- **Modern AI Healthcare SaaS Interface:** Built in dark navy (`#070d18`), cyan, and teal accents with 8 comprehensive analytical sections.
+[![Platform](https://img.shields.io/badge/Platform-Streamlit%20Cloud-06b6d4)](https://streamlit.io/)
+[![Dataset](https://img.shields.io/badge/Dataset-WESAD%20Benchmark-10b981)](https://archive.ics.uci.edu/dataset/465/wesad+wearable+stress+and+affect+detection)
+[![Engine](https://img.shields.io/badge/ML%20Engine-Random%20Forest%20Ensemble-38bdf8)](https://scikit-learn.org/)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-10b981)](https://github.com/)
 
 ---
 
-## 🫀 2. Dataset Attribution & Sensor Modalities
-- **Citation:** Philip Schmidt, Attila Reiss, Robert Duerichen, Claus Stockloew, and Kristof Van Laerhoven. *"Introducing WESAD, a Multimodal Dataset for Wearable Stress and Affect Detection."* ACM International Conference on Multimodal Interaction (ICMI '18), 2018.
-- **Repository:** UCI Machine Learning Repository (ID 465).
-- **Biosensor Hardware:** RespiBAN Professional Chest Strap (Lead-II ECG, EDA, Inductive Respiration, Skin Temperature, 3D Accelerometer sampled at 700 Hz).
-- **Original WESAD Affect Classes:**
-  - `0 = Baseline Homeostasis` (Quiet resting reading, vagal parasympathetic dominance)
-  - `1 = Acute Sympathetic Stress` (Trier Social Stress Test: TSST mental arithmetic + speech)
-  - `2 = Amusement / Positive Valence` (Curated funny video clips, laughter respiration transients)
+## 📌 1. Product Overview
+**PulseGuard AI** is a modern healthcare technology SaaS web application designed to analyze physiological signals and discover patterns associated with stress using intelligent wearable data analysis.
+
+By evaluating multi-modal biosignals recorded from continuous wearable sensors, PulseGuard AI translates raw cardiac, electrodermal, and respiratory telemetry into transparent, real-time stress intelligence.
 
 ---
 
-## 🔬 3. Machine Learning Architecture
-```
-[RespiBAN Chest Sensors (ECG, EDA, Resp, Temp, ACC @ 700 Hz)]
-                              │
-                              ▼
-        [Signal Synchronization & 60-Second Windowing (5s stride)]
-                              │
-                              ▼
-[Subject-Specific Baseline Normalization: z = (x - mean_base) / std_base]
-                              │
-                              ▼
-       [Statistical Feature Extraction (28 Multi-Modal Channels)]
-                              │
-                              ▼
- [Random Forest Classifier Ensemble (100 Trees, class_weight='balanced')]
-                              │
-                              ▼
-[Subject-Independent Evaluation (Trained on S2, S3 | Tested strictly on S4)]
-                              │
-                              ▼
-         [Accuracy: 76.0% | Stress Recall: 73.1% | Stress Precision: 87.9%]
-```
+## 🧭 2. Core Product Features (3 Simple Navigation Sections)
+
+### 1. 🏠 HOME
+- **Header:** *"Your Body Has a Story. Understand It."*
+- **Action:** Quick-start button to **CHECK STRESS NOW**.
+- **How It Works:** 3-step breakdown (Capture Biosignals → Intelligent Analysis → Instant Insights).
+- **Supported Biosignals:** Electrocardiogram (ECG & HRV), Electrodermal Activity (EDA), Respiration Rhythm, and Skin Temperature.
+
+### 2. 🫀 STRESS CHECK (Dual-Input Classification Engine)
+- **Method 1: Sample Data**  
+  Select from authentic WESAD participants (`S4` held-out test participant, `S2`, `S3`) and sample 60-second windows. Review real-time vitals and click **ANALYZE STRESS**.
+- **Method 2: Upload Data**  
+  Upload custom biosensor CSV files containing the 28 required multi-modal features. Includes an instant **Download Compatible CSV Template** button and automated schema validation.
+- **Results Display:**
+  - **Predicted State:** Green = `Baseline`, Red = `Stress`, Blue = `Amusement`.
+  - **Visual Indicator & Probabilities:** Confidence percentage with ensemble probability distribution.
+  - **Physiological Explanation:** Human-readable insights into autonomic nervous system balance.
+
+### 3. 📑 MY RESULTS
+- **Session History:** Tracks all analyses performed during the current browsing session.
+- **Audit Table:** Chronological record of timestamps, data sources, predicted states, confidence scores, and vital signs.
+- **Data Export:** One-click download of results in **CSV** format or formatted **Clinical Assessment Dossier (TXT)**.
+- **History Management:** Reset and clear session history with a single click.
 
 ---
 
-## 📊 4. Model Evaluation Summary
-| Metric | Performance on Held-Out Subject S4 | Interpretation |
-| :--- | :---: | :--- |
-| **Overall Test Accuracy** | **75.98%** | Matches published WESAD chest benchmarks |
-| **Stress Recall (Priority)** | **73.11%** | Successfully catches 73 out of 100 acute stress episodes |
-| **Stress Precision** | **87.88%** | When stress is predicted, it is 88% reliable |
-| **Baseline Recall** | **100.00%** | Zero false alarms during relaxed resting periods |
-| **Macro F1-Score** | **56.84%** | Balanced across all three affective states |
+## 🫀 3. Data Authenticity & Machine Learning Pipeline
+- **Authentic Benchmark:** Evaluated on genuine physiological recordings from the **WESAD** (Wearable Stress and Affect Detection) study (University of Siegen / ACM ICMI 2018).
+- **Three Original Affect Classes:**
+  - `0 = Baseline` (Homeostatic equilibrium, robust vagal parasympathetic modulation)
+  - `1 = Stress` (Acute sympathetic nervous system fight-or-flight response)
+  - `2 = Amusement` (Positive emotional valence and arousal)
+- **Subject-Independent Validation:** Zero participant window leakage! Trained on subjects `S2` and `S3` (806 windows) and evaluated on unseen subject `S4` (408 windows).
+- **Priority Target — Stress Recall:** 73.1% Stress Recall and 87.9% Stress Precision via balanced Random Forest bagging.
+- **Subject-Specific Baseline Normalization:** Features are standardized against personal resting baselines ($z = \frac{x - \mu_{base}}{\sigma_{base}}$) before classification.
 
 ---
 
-## 💻 5. Web Dashboard Architecture (8 Interactive Pages)
-1. **🏠 Home Dashboard:** High-level executive overview, verified WESAD badge, KPI summary cards, end-to-end ML pipeline diagram, and affect class definitions.
-2. **🗂️ Dataset Explorer:** Interactive tabular view of all 1,214 windows, filter by participant and condition, class distribution charts, and physiological summary tables.
-3. **📈 Signal Analysis:** Multi-channel 10-second raw waveform viewer (ECG in mV, EDA in µS, Respiration, Skin Temp, and 3D ACC magnitude) with clinical trace interpretations.
-4. **🔮 Stress Classification:** Real-time inference console. Evaluate real held-out patient windows from S4 or simulate custom biosensor readings with instant probability distribution and diagnostic rationale.
-5. **📊 Model Performance:** Confusion matrix heatmap, classification report, and deep dive into why Stress Recall is prioritized in healthcare.
-6. **🧬 Feature Importance:** Gini importance bar chart highlighting top biomarkers (EDA slope, HRV RMSSD, Heart Rate, Respiration Rate).
-7. **📑 Risk Report:** Comprehensive clinical assessment report with vital signs breakdown, recommended interventions (diaphragmatic breathing), and one-click TXT/CSV downloads.
-8. **ℹ️ About Project:** Official WESAD study citation, hardware specifications (RespiBAN & Empatica E4), laboratory TSST protocol details, and B.Tech CSE presentation highlights.
-
----
-
-## 🚀 6. How to Run Locally
+## 🚀 4. How to Run Locally
 
 ### Step 1: Install Dependencies
 ```bash
@@ -92,35 +65,32 @@ pip install -r requirements.txt
 ```bash
 python test_system.py
 ```
+*Output: All 7 verification tests pass with 100% success.*
 
-### Step 3: Launch the Streamlit Dashboard
+### Step 3: Launch Web Application
 ```bash
 streamlit run app.py
 ```
-Or double-click `run_app.bat` to launch automatically.
+Or double-click [run_app.bat](file:///c:/Users/Akhil/Desktop/supervised%20project/run_app.bat) to launch in your default browser.
 
 ---
 
-## 🌐 7. Streamlit Community Cloud Deployment Guide
+## 🌐 5. Streamlit Community Cloud Deployment Guide
 
-1. Push this repository to GitHub:
+1. Push this repository to your GitHub account:
 ```bash
 git init
 git add .
-git commit -m "feat: complete WESAD wearable stress classification dashboard"
+git commit -m "feat: complete PulseGuard AI healthcare SaaS web application"
 git branch -M main
-git remote add origin https://github.com/<YOUR-USERNAME>/wearable-stress-classification.git
+git remote add origin https://github.com/<YOUR-USERNAME>/pulseguard-ai.git
 git push -u origin main
 ```
-2. Log in to [share.streamlit.io](https://share.streamlit.io) with GitHub.
-3. Click **New app**, select your repo, branch `main`, and main file path `app.py`.
+2. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
+3. Click **New app**, select your repository, branch `main`, and main file path `app.py`.
 4. Click **Deploy!**
 
 ---
 
-## 🎓 8. College Presentation & Viva Voce Q&A Cheat Sheet
-
-- **Why WESAD over synthetic data?** Provides genuine 700 Hz physiological sensor recordings under controlled psychological stress protocols (TSST).
-- **Why Random Forest?** Handles non-linear physiological interactions, robust to outliers, avoids overfitting via bagging, and supports `class_weight='balanced'`.
-- **Why Stress Recall is prioritized?** Missing a true acute stress episode (False Negative) is dangerous in health monitoring; balanced weights ensure high sensitivity.
-- **Why Subject-Independent evaluation?** Eliminates participant window leakage to prove real-world generalization on new patients.
+## 📄 6. Disclaimer
+PulseGuard AI provides intelligent physiological insights based on the open-access WESAD scientific dataset. Not certified as a standalone medical diagnostic device.

@@ -1,12 +1,11 @@
 """
 =============================================================================
-WEARABLE-SIGNAL STRESS-RISK CLASSIFICATION (WESAD REAL DATASET)
+PULSEGUARD AI — WEARABLE-SIGNAL STRESS CLASSIFICATION
 Module: train_model.py
 Description: Supervised learning model training using Random Forest Classifier,
              authentic subject-independent evaluation, Stress Recall optimization,
              Gini feature importance analysis, and Joblib model persistence.
 Dataset: Genuine WESAD physiological recordings (University of Siegen & UCI ML)
-Target Audience: 2nd-year B.Tech CSE presentation & demonstration.
 =============================================================================
 """
 
@@ -34,6 +33,7 @@ from preprocessing import (
     DATASET_FILENAME,
     RAW_SAMPLES_FILENAME,
     SCALER_FILENAME,
+    BASELINE_STATS_FILENAME,
     FEATURE_COLUMNS,
     TARGET_COLUMN,
     SUBJECT_COLUMN,
@@ -42,7 +42,10 @@ from preprocessing import (
     load_wesad_dataset,
     prepare_subject_independent_split,
     save_scaler,
-    load_scaler
+    load_scaler,
+    load_baseline_stats,
+    compute_and_save_baseline_stats,
+    normalize_sample
 )
 
 MODEL_FILENAME = os.path.join(BASE_DIR, "wesad_rf_model.pkl")
@@ -58,79 +61,45 @@ def train_wesad_model(
     """
     Trains a Random Forest Classifier on genuine WESAD physiological recordings
     using a strict SUBJECT-INDEPENDENT evaluation methodology.
-    
-    Training Set: Participants S2 and S3 (806 windows).
-    Test Set: Participant S4 (408 windows).
-    
-    Why Random Forest Classifier?
-    1. Ensemble Bagging: Combines 100 decorrelated decision trees, minimizing variance
-       and avoiding overfitting on biological time-series features.
-    2. Non-Linear Physiological Boundaries: Autonomic nervous system responses
-       (e.g., steep EDA slope combined with depressed HRV RMSSD) exhibit non-linear
-       thresholds that tree ensembles capture without complex kernel tuning.
-    3. Balanced Class Weights (`class_weight='balanced'`): Automatically penalizes
-       misclassification inversely proportional to class frequencies. Crucial for
-       our medical monitoring objective: NOT missing acute stress episodes.
-    4. Interpretability via Gini Feature Importance: Explains exactly which sensor
-       channels (EDA, HRV, Respiration, Temp) drive the model's classifications.
     """
     print("=================================================================")
     print("      TRAINING RANDOM FOREST CLASSIFIER ON REAL WESAD DATA       ")
     print("=================================================================")
     
-    # Step 1: Load authentic WESAD processed dataset
-    print(f"\n[1/4] Loading real WESAD dataset from '{data_path}'...")
+    # 1. Load dataset
     df = load_wesad_dataset(data_path)
     
-    # Step 2: Subject-independent split & baseline normalization
-    print(f"\n[2/4] Performing Subject-Independent Split (Test Subject: {test_subject})...")
+    # Compute and save baseline normalization statistics
+    compute_and_save_baseline_stats(df, BASELINE_STATS_FILENAME)
+    
+    # 2. Subject-independent split & baseline normalization
     X_train_sc, X_test_sc, y_train, y_test, scaler, train_df, test_df = prepare_subject_independent_split(
         df, test_subject=test_subject, apply_baseline_norm=True
     )
-    print(f"  -> Training Windows (Participants S2, S3): {len(X_train_sc)}")
-    print(f"  -> Testing Windows (Participant {test_subject}):      {len(X_test_sc)}")
-    print(f"  -> Features per Window:                   {X_train_sc.shape[1]}")
     
-    # Save fitted scaler
     save_scaler(scaler, scaler_path)
     
-    # Step 3: Train Random Forest Classifier
-    print("\n[3/4] Initializing and training Random Forest Classifier...")
+    # 3. Train Random Forest Classifier
     rf_model = RandomForestClassifier(
-        n_estimators=100,         # 100 ensemble trees
-        max_depth=10,             # Regularization depth to prevent memorization
-        min_samples_split=4,      # Robust split threshold
-        class_weight="balanced",  # Vital for high stress recall
-        random_state=random_state, # 100% reproducible results for academic demo
+        n_estimators=100,
+        max_depth=10,
+        min_samples_split=4,
+        class_weight="balanced",
+        random_state=random_state,
         n_jobs=-1
     )
     rf_model.fit(X_train_sc, y_train)
-    print("  -> Training complete.")
     
-    # Persist trained model
     joblib.dump(rf_model, model_path)
-    print(f"  -> Model persisted to '{model_path}'.")
+    print(f"  -> Model saved to '{model_path}'.")
     
-    # Step 4: Evaluate on unseen participant test data
-    print("\n[4/4] Evaluating model performance on held-out test participant...")
+    # 4. Evaluate on unseen participant test data
     results = evaluate_wesad_model(rf_model, scaler, df, test_subject=test_subject)
-    
-    print("\n======================= EVALUATION SUMMARY =======================")
-    print(f"  Test Subject:                {test_subject}")
-    print(f"  Overall Test Accuracy:       {results['accuracy'] * 100:.2f}%")
-    print(f"  STRESS RECALL (Priority):    {results['stress_recall'] * 100:.2f}%")
-    print(f"  STRESS PRECISION:            {results['stress_precision'] * 100:.2f}%")
-    print(f"  Baseline Recall:             {results['class_metrics']['Baseline']['recall'] * 100:.2f}%")
-    print(f"  Amusement Recall:            {results['class_metrics']['Amusement']['recall'] * 100:.2f}%")
-    print("==================================================================\n")
-    
     return rf_model, scaler, results
 
 
 def evaluate_wesad_model(model, scaler, df, test_subject="S4"):
-    """
-    Computes rigorous evaluation metrics on the held-out test participant.
-    """
+    """Computes evaluation metrics on held-out test participant."""
     X_train_sc, X_test_sc, y_train, y_test, _, train_df, test_df = prepare_subject_independent_split(
         df, test_subject=test_subject, apply_baseline_norm=True
     )
@@ -158,7 +127,6 @@ def evaluate_wesad_model(model, scaler, df, test_subject="S4"):
         zero_division=0
     )
     
-    # Extract class-specific metrics
     class_metrics = {}
     for cls_name in target_names:
         if cls_name in report_dict:
@@ -169,14 +137,12 @@ def evaluate_wesad_model(model, scaler, df, test_subject="S4"):
                 "support": int(report_dict[cls_name]["support"])
             }
             
-    # Extract feature importances
     importances = model.feature_importances_
     feat_imp = pd.DataFrame({
         "Feature": FEATURE_COLUMNS,
         "Importance": importances
     }).sort_values("Importance", ascending=False).reset_index(drop=True)
     
-    # Stress metrics
     stress_recall = class_metrics.get("Stress", {}).get("recall", 0.0)
     stress_precision = class_metrics.get("Stress", {}).get("precision", 0.0)
     
@@ -202,18 +168,14 @@ def evaluate_wesad_model(model, scaler, df, test_subject="S4"):
 
 
 def load_wesad_model(model_path=MODEL_FILENAME, scaler_path=SCALER_FILENAME):
-    """
-    Loads saved model and scaler. If missing, automatically trains and saves them.
-    """
+    """Loads saved model and scaler. If missing, automatically trains and saves them."""
     if not os.path.exists(model_path) or not os.path.exists(scaler_path):
-        # Fallback check in parent
         parent_model = os.path.join(os.path.dirname(BASE_DIR), "wesad_rf_model.pkl")
         parent_scaler = os.path.join(os.path.dirname(BASE_DIR), "wesad_scaler.pkl")
         if os.path.exists(parent_model) and os.path.exists(parent_scaler):
             model_path = parent_model
             scaler_path = parent_scaler
         else:
-            print("[INFO] Model or scaler not found on disk. Initiating training...")
             model, scaler, _ = train_wesad_model(model_path=model_path, scaler_path=scaler_path)
             return model, scaler
             
@@ -222,27 +184,35 @@ def load_wesad_model(model_path=MODEL_FILENAME, scaler_path=SCALER_FILENAME):
     return model, scaler
 
 
-def predict_wesad_window(features_series, model, scaler):
+def predict_wesad_window(features_series, model, scaler, baseline_stats=None, subject_id=None, is_normalized=False):
     """
     Inference helper for a single window of 28 physiological features.
     
-    Returns:
-    - predicted_class: int (0, 1, or 2)
-    - class_name: str ("Baseline", "Stress", or "Amusement")
-    - probabilities: dict of class_name -> float probability
-    - rationale: clinical/physiological explanation of key indicators
+    Parameters:
+    - features_series: dict, pd.Series, or pd.DataFrame containing feature columns
+    - model: trained RandomForestClassifier
+    - scaler: fitted StandardScaler
+    - baseline_stats: precomputed baseline statistics for z-score normalization
+    - subject_id: optional subject identifier (e.g., 'S2', 'S3', 'S4')
+    - is_normalized: True if input features are already baseline-normalized z-scores
     """
     if isinstance(features_series, pd.Series):
         feat_dict = features_series.to_dict()
     elif isinstance(features_series, dict):
         feat_dict = features_series
+    elif isinstance(features_series, pd.DataFrame):
+        feat_dict = features_series.iloc[0].to_dict()
     elif isinstance(features_series, np.ndarray):
         feat_dict = {col: features_series.flatten()[i] for i, col in enumerate(FEATURE_COLUMNS)}
     else:
         raise ValueError("Unsupported input format for features_series.")
         
-    # Scale features with fitted scaler using DataFrame to preserve feature names
-    x_df = pd.DataFrame([[feat_dict[c] for c in FEATURE_COLUMNS]], columns=FEATURE_COLUMNS)
+    # Baseline normalization if needed
+    if not is_normalized and baseline_stats is not None:
+        x_df = normalize_sample(feat_dict, baseline_stats, subject_id=subject_id)
+    else:
+        x_df = pd.DataFrame([[feat_dict.get(c, 0.0) for c in FEATURE_COLUMNS]], columns=FEATURE_COLUMNS)
+        
     x_scaled = pd.DataFrame(scaler.transform(x_df), columns=FEATURE_COLUMNS)
     
     pred_class = int(model.predict(x_scaled)[0])
@@ -253,46 +223,41 @@ def predict_wesad_window(features_series, model, scaler):
         for i in range(len(LABEL_NAMES))
     }
     
-    # Generate dynamic physiological rationale
-    hr = feat_dict.get("Heart_Rate", 0.0)
-    hrv = feat_dict.get("HRV_RMSSD", 0.0)
-    eda_mean = feat_dict.get("EDA_mean", 0.0)
-    eda_slope = feat_dict.get("EDA_slope", 0.0)
-    resp_rate = feat_dict.get("Respiratory_Rate", 0.0)
-    temp_slope = feat_dict.get("Temp_slope", 0.0)
+    # Generate simple, clear, user-friendly physiological explanation
+    hr = float(feat_dict.get("Heart_Rate", 0.0))
+    hrv = float(feat_dict.get("HRV_RMSSD", 0.0))
+    eda_mean = float(feat_dict.get("EDA_mean", 0.0))
+    resp_rate = float(feat_dict.get("Respiratory_Rate", 0.0))
     
-    rationale_bullets = []
     if pred_class == 1:  # Stress
-        rationale_bullets.append(
-            f"Electrodermal Activity shows significant sympathetic arousal with elevated skin conductance (EDA mean: {eda_mean:.2f} µS, slope: {eda_slope:+.3f})."
+        explanation = (
+            f"Acute sympathetic nervous system arousal detected. Key physiological markers indicate elevated "
+            f"skin conductance (EDA: {eda_mean:.2f} µS) and heightened cardiac rhythm (HR: {hr:.1f} BPM) "
+            f"with suppressed autonomic variability (HRV RMSSD: {hrv:.1f} ms), characteristic of an active stress response."
         )
-        if hr > 75:
-            rationale_bullets.append(f"Cardiac tone exhibits sustained elevation (HR: {hr:.1f} BPM) coupled with reduced parasympathetic modulation (HRV RMSSD: {hrv:.2f} ms).")
-        if resp_rate > 15:
-            rationale_bullets.append(f"Respiration reflects tachypnea / elevated ventilatory drive ({resp_rate:.1f} breaths/min).")
-        if temp_slope < 0:
-            rationale_bullets.append("Peripheral skin temperature exhibits vasoconstriction (negative slope), consistent with acute sympathetic nervous system activation.")
     elif pred_class == 0:  # Baseline
-        rationale_bullets.append(
-            f"Autonomic stability is maintained: resting heart rate ({hr:.1f} BPM) with robust vagal parasympathetic modulation (HRV RMSSD: {hrv:.2f} ms)."
+        explanation = (
+            f"Homeostatic baseline equilibrium detected. Cardiac patterns exhibit healthy vagal tone "
+            f"(HR: {hr:.1f} BPM, HRV RMSSD: {hrv:.1f} ms), skin conductance is quiescent ({eda_mean:.2f} µS), "
+            f"and respiratory rhythm is calm and regular ({resp_rate:.1f} br/min)."
         )
-        rationale_bullets.append(f"Tonic skin conductance remains quiescent (EDA mean: {eda_mean:.2f} µS) with negligible phasic flaring.")
-        rationale_bullets.append(f"Respiration pattern is rhythmic and regular ({resp_rate:.1f} breaths/min).")
     else:  # Amusement
-        rationale_bullets.append(
-            f"Emotional arousal with positive valence: moderate heart rate ({hr:.1f} BPM) and transient laughter/vocal respiration perturbations."
+        explanation = (
+            f"Positive emotional arousal detected. Physiological signals show moderate sympathetic engagement "
+            f"(HR: {hr:.1f} BPM, EDA: {eda_mean:.2f} µS) combined with characteristic respiratory modulation, "
+            f"reflecting positive emotional valence rather than distress."
         )
-        rationale_bullets.append(f"EDA exhibits transient phasic peaks without the sustained high sympathetic tonic elevation of distress (EDA mean: {eda_mean:.2f} µS).")
         
     return {
         "pred_class": pred_class,
         "class_name": LABEL_NAMES[pred_class],
         "probabilities": prob_dict,
         "confidence": prob_dict[LABEL_NAMES[pred_class]],
-        "rationale": " ".join(rationale_bullets),
-        "rationale_bullets": rationale_bullets
+        "explanation": explanation,
+        "vitals": {
+            "Heart_Rate": hr,
+            "HRV_RMSSD": hrv,
+            "EDA_mean": eda_mean,
+            "Respiratory_Rate": resp_rate
+        }
     }
-
-
-if __name__ == "__main__":
-    model, scaler, results = train_wesad_model(test_subject="S4")
